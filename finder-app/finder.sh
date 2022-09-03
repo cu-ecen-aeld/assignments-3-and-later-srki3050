@@ -10,14 +10,17 @@ fi
 
 # https://youtube.com/watch?v=mXh7rObKU4E - Exit status and logging references
 
-if [ ! -d $1 ];
+directoryname=$1
+stringname=$2
+
+if [ ! -d "${directoryname}" ];
 then
    echo "This is not a directory"
    exit 1
 fi
 
-x=$(find $1 -type f | wc -l)
-y=$(grep -r $2 $1 | wc -l)
+x=$(find $directoryname -type f | wc -l)
+y=$(grep -r $stringname $directoryname | wc -l)
 
 # r searches recursively on every file, | used for feeding the output of one file to another file
 
