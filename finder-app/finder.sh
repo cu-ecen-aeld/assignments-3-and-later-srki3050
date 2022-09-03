@@ -19,11 +19,11 @@ then
    exit 1
 fi
 
-x=$(find $directoryname -type f | wc -l)
-y=$(grep -r $stringname $directoryname | wc -l)
+numfiles=$(find $directoryname -type f | wc -l)
+numberofmatches=$(grep -r $stringname $directoryname | wc -l)
 
 # r searches recursively on every file, | used for feeding the output of one file to another file
 
-echo "The number of files are $x and the number of matching lines are $y"
+echo "The number of files are $numfiles and the number of matching lines are $numberofmatches"
 
 exit 0
