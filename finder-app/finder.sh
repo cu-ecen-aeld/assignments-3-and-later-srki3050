@@ -1,5 +1,10 @@
 #!/bin/sh
 
+# Name		: Sricharan Kidambi
+# Course	: ECEN 5713 Advanced Embedded software Development
+# Date		: 4th September 2022
+# file		: finder.sh
+
 # recommended by deekshith patil on office hours
 
 if [ $# -ne 2 ];

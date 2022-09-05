@@ -26,3 +26,19 @@ to synchronize after cloning and before starting each assignment, as discussed i
 As a part of the assignment instructions, you will setup your assignment repo to perform automated testing using github actions.  See [this page](https://github.com/cu-ecen-aeld/aesd-assignments/wiki/Setting-up-Github-Actions) for details.
 
 Note that the unit tests will fail on this repository, since assignments are not yet implemented.  That's your job :) 
+
+## Additional Notes (By Sricharan - In assignment 2)
+
+Commands entered to get the file details in files located in
+assignment-2-srki3050/assignments/assignment-2
+
+cross-compiler.txt
+
+1 Print the sysroot command of the installed ARM compiler
+	aarch-64-none-linux-gnu-gcc -print-sysroot &> //home/sricharan/Documents/AESD/Assignments/assignment-1-srki3050/assignments/assignment2/cross-compiler.txt
+2 Print the Version of the ARM compiler
+	aarch-64-none-linux-gnu-gcc -v &> //home/sricharan/Documents/AESD/Assignments/assignment-1-srki3050/assignments/assignment2/cross-compiler.txt
+
+fileresult.txt
+Print the ARM compiled output to
+	file writer &> //home/sricharan/Documents/AESD/Assignments/assignment-1-srki3050/assignments/assignment2/fileresults.txt
