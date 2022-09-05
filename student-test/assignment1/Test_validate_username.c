@@ -19,6 +19,6 @@ void test_validate_my_username()
      * config file and my_username() functions are setup properly
      */
 const char *username = my_username();
-char *malloc_username = malloc_username_from_conf_file(); TEST_ASSERT_EQUAL_STRING_MESSAGE(username,malloc_username,"Equal");
+char *malloc_username = malloc_username_from_conf_file(); TEST_ASSERT_EQUAL_STRING_MESSAGE(username,malloc_username,"Both Strings are not Equal");
 free(malloc_username);
 }
