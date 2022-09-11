@@ -1,4 +1,22 @@
+/*Name		: Sricharan Kidambi
+  Course	: ECEN 5713 Advanced Embedded Software Development
+  File		: systemcalls.c
+  Brief	: perform system calls and test it in multiple ways
+  	          so as to create a child process, execute commands in it 			  and wait for termination.
+  Date		: 11th September 2022
+  References	: Linux system programming by robert love page 160 and 161
+  		  https://stackoverflow.com/a/13784315/1446624
+*/
+
+#define _XOPEN_SOURCE
 #include "systemcalls.h"
+#include "sys/types.h"
+#include "sys/wait.h"
+#include "unistd.h"
+#include "stdlib.h"
+#include "string.h"
+#include "fcntl.h"
+#include "stdio.h"
 
 /**
  * @param cmd the command to execute with system()
@@ -16,8 +34,14 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
-
-    return true;
+    //int system(const char *cmd) - used to do fork(), exec() and wait() 	call in a single statement.
+    int sys_call = system(cmd);
+    if(sys_call == -1){
+    	return false;
+    }
+    else{
+    	return true;
+    }	
 }
 
 /**
@@ -58,9 +82,34 @@ bool do_exec(int count, ...)
  *   as second argument to the execv() command.
  *
 */
-
+    // fork() - creates a new process and returns its process id
+    pid_t pid = fork (); 
+    if (pid == -1){
+	return false;
+    }
+    // execv() - Loads the binary image to the created process and starts execution
+    else if (pid == 0){
+	if (execv (command[0], command) == -1){
+		perror("Exec call failed");
+		exit(-1);
+	}
+    }
+    int status;
+    // wait() = waits until the child process gets terminated
+    int call_wait = waitpid(pid,&status,0);
+    if(call_wait == -1){
+    	perror("waitpid call failed");
+    	return false;
+    }
+    // WIFEXITED returns true if process terminated normally
+    if (WIFEXITED(status)){
+	if (WEXITSTATUS(status) != 0)
+		return false;
+    else
+	return true;
+    }
     va_end(args);
-
+    
     return true;
 }
 
@@ -92,7 +141,30 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
-
+    int kidpid;
+    int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+    if (fd < 0) { perror("open"); abort(); }
+    switch (kidpid = fork()) {
+  	case -1: perror("fork"); abort();
+  	case 0:
+    		if (dup2(fd, 1) < 0) { perror("dup2"); abort(); }
+    		close(fd);
+    		int call_to_exec = execvp(command[0], command);
+    		if(call_to_exec == -1){
+    			perror("execvp"); abort();
+    		}	
+  	default:
+    		close(fd);
+    		int status;
+   		int call_wait = waitpid(kidpid,&status,0);
+    		if(call_wait == -1){
+    			perror("waitpid");
+    			return false;
+    		}
+    		else if(WIFEXITED(status)){
+    			return false;
+    		}
+    }
     va_end(args);
 
     return true;

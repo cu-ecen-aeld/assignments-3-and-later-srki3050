@@ -1,6 +1,8 @@
 #!/bin/bash
 # Script outline to install and build kernel.
-# Author: Siddhant Jajoo.
+# Author: Sricharan Kidambi
+# Build the linux system
+# Include compiling the kernel, setting up the file system with app content.
 
 set -e
 set -u
