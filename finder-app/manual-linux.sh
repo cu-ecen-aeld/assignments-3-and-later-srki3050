@@ -49,13 +49,15 @@ if [ ! -e ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ]; then
     #mrproper performs "deep-clean"
     make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} mrproper
     #defconfig configures virtual arm dev board which will emulate QEMU
-    make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} defconfig
+    make -j4 ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} defconfig
+    #Build the image
+    make -j4 ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} Image
     #Build a kernel image for booting with QEMU
-    make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} all
+    make -j4 ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} all
     #Build any kernel modules
-    make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} modules
+    make -j4 ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} modules
     #Build the device tree
-    make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} dtbs
+    make -j4 ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} dtbs
 fi
 
 # copy the image from the existing location to OUTDIR directory
@@ -95,6 +97,7 @@ fi
 # TODO: Make and install busybox
 make -j4 CONFIG_PREFIX=${OUTDIR}/rootfs ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} install
 
+cd ${OUTDIR}/rootfs
 echo "Library dependencies"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "program interpreter"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
@@ -126,7 +129,7 @@ cp ./*.sh ${OUTDIR}/rootfs/home
 cp ./writer ${OUTDIR}/rootfs/home
 # Point 1.g in assignment instructions
 cp -r ./conf/ ${OUTDIR}/rootfs/home
-# References: Mastering Embedded Linux Programming chapter 5 page 199
+# References: Mastering Embe dded Linux Programming chapter 5 page 199
 # TODO: Chown the root directory
 cd ${OUTDIR}/rootfs
 sudo chown -R root:root *
