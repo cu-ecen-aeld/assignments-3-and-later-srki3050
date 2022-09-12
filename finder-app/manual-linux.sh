@@ -9,6 +9,7 @@
 set -e
 set -u
 
+# set default directory to OUTDIR, condition a.i in assignment instructions
 OUTDIR=/tmp/aeld
 KERNEL_REPO=git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
 KERNEL_VERSION=v5.1.10
@@ -25,6 +26,7 @@ else
 	echo "Using passed directory ${OUTDIR} for output"
 fi
 # create a directory if it doesnt exist, else no operation
+# condition b in assignment instructions
 mkdir -p ${OUTDIR}
 # traverse to that directory
 cd "$OUTDIR"
@@ -38,7 +40,6 @@ if [ ! -e ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ]; then
     cd linux-stable
     echo "Checking out version ${KERNEL_VERSION}"
     git checkout ${KERNEL_VERSION}
-    wget https://github.com/torvalds/linux/commit/e33a814e772cdc36436c8c188d8c42d019fda639.diff
     
     # TODO: Add your kernel build steps here
     
@@ -50,7 +51,7 @@ if [ ! -e ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ]; then
     make -j4 ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} all
     #Build any kernel modules
     make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} modules
-    #Build the devicetree
+    #Build the device tree
     make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} dtbs
 fi
 
@@ -68,8 +69,8 @@ fi
 
 # TODO: Create necessary base directories
 cd "$OUTDIR"
-mkdir rootfs
-cd rootfs
+mkdir ./rootfs
+cd ./rootfs
 mkdir -p bin dev etc home lib lib64 proc sbin sys tmp usr var
 mkdir -p usr/bin usr/lib usr/sbin
 mkdir -p var/log
@@ -96,11 +97,14 @@ ${CROSS_COMPILE}readelf -a bin/busybox | grep "program interpreter"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 
 # TODO: Add library dependencies to rootfs
+cd ${OUTDIR}/rootfs
+
 export SYSROOT=$(${CROSS_COMPILE}gcc -print-sysroot)
-cp $SYSROOT/lib/ld-linux-aarch64.so.1 ${OUTPUTDIR}/rootfs/lib
-cp $SYSROOT/lib/libm.so.6 ${OUTPUTDIR}/rootfs/lib64
-cp $SYSROOT/lib/libresolv.so.2 ${OUTPUTDIR}/rootfs/lib64
-cp $SYSROOT/lib/libc.so.6 ${OUTPUTDIR}/rootfs/lib64
+
+cp $SYSROOT/lib/ld-linux-aarch64.so.1 lib
+cp $SYSROOT/lib/libm.so.6 lib64
+cp $SYSROOT/lib/libresolv.so.2 lib64
+cp $SYSROOT/lib/libc.so.6 lib64
 
 # TODO: Make device nodes
 sudo mknod -m 666 dev/null c 1 3
@@ -109,15 +113,23 @@ sudo mknod -m 600 dev/console c 5 1
 # TODO: Clean and build the writer utility
 cd ${FINDER_APP_DIR}
 make clean
-make CROSS_COMPILE=${CROSS_COMPILE} all
+make CROSS_COMPILE=${CROSS_COMPILE}
 
 # TODO: Copy the finder related scripts and executables to the /home directory
 # on the target rootfs
 # references: discussed with swapnil ghonge and obtained ideas on how to copy contents to rootfs directory
-cp ${FINDER_APP_DIR}/finder.sh ${OUTDIR}/rootfs/home
-cp ${FINDER_APP_DIR}/finder-test.sh ${OUTDIR}/rootfs/home
-cp ${FINDER_APP_DIR}/writer ${OUTDIR}/rootfs/home
-cp ${FINDER_APP_DIR}/conf/ -r ${OUTDIR}/rootfs/home
+# Additional references: https://askubuntu.com/questions/835657/copy-file-to-current-repository
+cd ${OUTDIR}/rootfs/home
+# Point 1.f in assignment instructions
+cp ${FINDER_APP_DIR}/finder.sh .
+cp ${FINDER_APP_DIR}/finder-test.sh .
+# Point 1.e.ii in assignment instructions
+cp ${FINDER_APP_DIR}/writer .
+# Point 1.g in assignment instructions
+cp ${FINDER_APP_DIR}/autorun-qemu.sh .
+# Point 1.f in assignment instructions
+mkdir -p conf
+cp -a ${FINDER_APP_DIR}/conf/username.txt ./conf
 
 # References: Mastering Embedded Linux Programming chapter 5 page 199
 # TODO: Chown the root directory
@@ -128,7 +140,8 @@ sudo chown -R root:root *
 # TODO: Create initramfs.cpio.gz
 cd ${OUTDIR}/rootfs
 find .| cpio -H newc -ov --owner root:root > ../initramfs.cpio
+# Navigate to OUTDIR FILE
 cd ..
-
 # Zip the OUTDIR FILE
-gzip -f initramfs.cpio
+# references: https://linuxsize.com/post/gzip-command-in-linux/
+gzip initramfs.cpio
