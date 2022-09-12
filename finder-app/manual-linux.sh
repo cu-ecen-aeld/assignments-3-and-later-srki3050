@@ -9,6 +9,9 @@
 set -e
 set -u
 
+# For Debugging, discussed with swapnil for the belo point
+sudo env "PATH=$PATH"
+
 # set default directory to OUTDIR, condition a.i in assignment instructions
 OUTDIR=/tmp/aeld
 KERNEL_REPO=git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
@@ -48,7 +51,7 @@ if [ ! -e ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ]; then
     #defconfig configures virtual arm dev board which will emulate QEMU
     make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} defconfig
     #Build a kernel image for booting with QEMU
-    make -j4 ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} all
+    make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} all
     #Build any kernel modules
     make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} modules
     #Build the device tree
@@ -68,9 +71,9 @@ then
 fi
 
 # TODO: Create necessary base directories
-cd "$OUTDIR"
-mkdir ./rootfs
-cd ./rootfs
+mkdir -p ${OUTDIR}/rootfs
+cd ${OUTDIR}/rootfs
+# Reference - Lecture material, building a root file system
 mkdir -p bin dev etc home lib lib64 proc sbin sys tmp usr var
 mkdir -p usr/bin usr/lib usr/sbin
 mkdir -p var/log
@@ -90,21 +93,19 @@ else
 fi
 
 # TODO: Make and install busybox
-make CONFIG_PREFIX=${OUTDIR}/rootfs ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} install
+make -j4 CONFIG_PREFIX=${OUTDIR}/rootfs ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} install
 
 echo "Library dependencies"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "program interpreter"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 
 # TODO: Add library dependencies to rootfs
-cd ${OUTDIR}/rootfs
-
 export SYSROOT=$(${CROSS_COMPILE}gcc -print-sysroot)
 
 cp $SYSROOT/lib/ld-linux-aarch64.so.1 lib
-cp $SYSROOT/lib/libm.so.6 lib64
-cp $SYSROOT/lib/libresolv.so.2 lib64
-cp $SYSROOT/lib/libc.so.6 lib64
+cp $SYSROOT/lib64/libm.so.6 lib64
+cp $SYSROOT/lib64/libresolv.so.2 lib64
+cp $SYSROOT/lib64/libc.so.6 lib64
 
 # TODO: Make device nodes
 sudo mknod -m 666 dev/null c 1 3
@@ -119,18 +120,12 @@ make CROSS_COMPILE=${CROSS_COMPILE}
 # on the target rootfs
 # references: discussed with swapnil ghonge and obtained ideas on how to copy contents to rootfs directory
 # Additional references: https://askubuntu.com/questions/835657/copy-file-to-current-repository
-cd ${OUTDIR}/rootfs/home
 # Point 1.f in assignment instructions
-cp ${FINDER_APP_DIR}/finder.sh .
-cp ${FINDER_APP_DIR}/finder-test.sh .
+cp ./*.sh ${OUTDIR}/rootfs/home
 # Point 1.e.ii in assignment instructions
-cp ${FINDER_APP_DIR}/writer .
+cp ./writer ${OUTDIR}/rootfs/home
 # Point 1.g in assignment instructions
-cp ${FINDER_APP_DIR}/autorun-qemu.sh .
-# Point 1.f in assignment instructions
-mkdir -p conf
-cp -a ${FINDER_APP_DIR}/conf/username.txt ./conf
-
+cp -r ./conf/ ${OUTDIR}/rootfs/home
 # References: Mastering Embedded Linux Programming chapter 5 page 199
 # TODO: Chown the root directory
 cd ${OUTDIR}/rootfs
@@ -144,4 +139,4 @@ find .| cpio -H newc -ov --owner root:root > ../initramfs.cpio
 cd ..
 # Zip the OUTDIR FILE
 # references: https://linuxsize.com/post/gzip-command-in-linux/
-gzip initramfs.cpio
+gzip -f initramfs.cpio
