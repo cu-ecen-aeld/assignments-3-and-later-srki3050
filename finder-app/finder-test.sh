@@ -65,7 +65,7 @@ do
 	writer "$WRITEDIR/${username}$i.txt" "$WRITESTR"
 done
 
-OUTPUTSTRING=$(./${FINDER} "$WRITEDIR" "$WRITESTR")
+OUTPUTSTRING=$(${FINDER} "$WRITEDIR" "$WRITESTR")
 
 echo $OUTPUTSTRING > /tmp/assignment4-result.txt
 
