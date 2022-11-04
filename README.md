@@ -42,3 +42,22 @@ cross-compiler.txt
 fileresult.txt
 Print the ARM compiled output to
 	file writer &> //home/sricharan/Documents/AESD/Assignments/assignment-1-srki3050/assignments/assignment2/fileresults.txt
+	
+# Notes for Assignment 7
+
+Perform user space implementation of a circular buffer
+
+Without Designing Circular buffer in user space in case you directly implement it on the kernel, kernel debugging is a difficult task.
+
+The main structure has
+another structure as a member which by itself contains
+	a pointer to the current element in circular buffer
+	the size of the current circular buffer
+the current write location
+the current read location
+A checker to check if the buffer is full
+
+Functions required
+aesd_circular_buffer_init - Initialize the circular buffer to empty in the beginning
+aesd_circular_buffer_add_entry - Add an entry to the circular buffer
+aesd_circular_buffer_find_entry_offset_for_fpos - find the current offset location to write. 
