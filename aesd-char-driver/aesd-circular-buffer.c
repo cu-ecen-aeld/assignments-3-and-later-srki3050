@@ -60,7 +60,8 @@ struct aesd_buffer_entry *position = NULL;
 int current_location = get_populated_nodes(buffer);
 uint8_t index = buffer->out_offs;
 // start looping through those nodes to see if offset matches
-for(int i = current_location;i > 0;i--){
+int i;
+for(i = current_location;i > 0;i--){
 	if(buffer->entry[index].size >= char_offset + 1){
 		position = &buffer->entry[index];
 		*entry_offset_byte_rtn = char_offset;
