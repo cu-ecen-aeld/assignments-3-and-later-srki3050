@@ -48,19 +48,21 @@ else
 struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct aesd_circular_buffer *buffer,
             size_t char_offset, size_t *entry_offset_byte_rtn )
 {
+// The function has to return the position described by char_offset
+struct aesd_buffer_entry *position = NULL;
+int current_location;
+int i;
+uint8_t index;
 // Check if your list actually exists
 if(!buffer)
 	return NULL;
 // check if you are trying to encode a value in an unexisting location
 if(!entry_offset_byte_rtn)
 	return NULL;
-// The function has to return the position described by char_offset
-struct aesd_buffer_entry *position = NULL;
 // obtain the populated nodes and current pointing index
-int current_location = get_populated_nodes(buffer);
-uint8_t index = buffer->out_offs;
+current_location = get_populated_nodes(buffer);
+index = buffer->out_offs;
 // start looping through those nodes to see if offset matches
-int i;
 for(i = current_location;i > 0;i--){
 	if(buffer->entry[index].size >= char_offset + 1){
 		position = &buffer->entry[index];

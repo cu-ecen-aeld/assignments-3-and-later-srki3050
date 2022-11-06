@@ -54,23 +54,32 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     ssize_t retval = 0;
     ssize_t bytes_read = 0;
     ssize_t offset = 0;
+    size_t bytes_failed_to_copy;
     int lockstatus;
-    long bytes_failed_to_copy;
     PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
-    lockstatus = mutex_lock_interruptible(&aesd_device.lock);
+    lockstatus = mutex_lock_interruptible(&dev->lock);
     if(!lockstatus){
     	current_entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->cbuf_entity, *f_pos, &offset);
-    	bytes_read = current_entry -> size - offset;
-    	if(bytes_read > count){
-    		bytes_read = count;
+    	if(current_entry == NULL){
+    		mutex_unlock(&dev->lock);
+    		return 0;
     	}
-    }	
-    bytes_failed_to_copy = copy_to_user(buf, (current_entry->buffptr + offset), bytes_read);
-    if(!bytes_failed_to_copy){
-    	retval = bytes_read;
-    	*f_pos += retval;
+    	bytes_read = current_entry->size - offset;
+    	bytes_read = bytes_read > count?count:bytes_read;
     }
-    mutex_unlock(&aesd_device.lock);
+    else{
+    	return -ERESTARTSYS;
+    }
+    bytes_failed_to_copy = copy_to_user(buf, (current_entry->buffptr + offset), bytes_read);
+    if(bytes_failed_to_copy){
+    	mutex_unlock(&dev->lock);
+    	return -EFAULT;
+    }
+    else{
+    	*f_pos += bytes_read;
+    	retval = bytes_read;
+    }
+    mutex_unlock(&dev->lock);
     return retval;
 }
 
