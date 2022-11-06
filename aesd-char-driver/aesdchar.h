@@ -27,9 +27,6 @@
 
 struct aesd_dev
 {
-    /**
-     * TODO: Add structure(s) and locks needed to complete assignment requirements
-     */
     struct cdev cdev;     /* Char device structure      */
     //Now While programming Kernel Program, Create Entities for the data structure
     struct aesd_buffer_entry buffer_entity;

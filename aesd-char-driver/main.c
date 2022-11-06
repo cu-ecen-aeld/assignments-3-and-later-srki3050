@@ -32,7 +32,7 @@ struct aesd_dev aesd_device;
 // Perform Scull driver implementation - Source, Linux Device Drivers Chapter 3
 int aesd_open(struct inode *inode, struct file *filp)
 {
-    struct aesd_dev *dev;
+    struct aesd_dev *dev = NULL;
     PDEBUG("open");
     dev = container_of(inode->i_cdev, struct aesd_dev,cdev);
     filp->private_data = dev;
@@ -42,7 +42,6 @@ int aesd_open(struct inode *inode, struct file *filp)
 int aesd_release(struct inode *inode, struct file *filp)
 {
     PDEBUG("release");
-    filp->private_data = NULL;
     return 0;
 }
 
@@ -79,33 +78,45 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
     ssize_t retval = -ENOMEM;
-    struct aesd_dev *dev = (struct aesd_dev *)filp->private_data;
-    int lockstatus;
-    int i;
-    PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
-    lockstatus = mutex_lock_interruptible(&aesd_device.lock);
-    if(dev->buffer_entity.size == 0){
-    	dev->buffer_entity.buffptr = kmalloc((sizeof(char)*count),GFP_KERNEL);
-    	memset(dev->buffer_entity.buffptr, 0, sizeof(char)*count);
-    }
+    //const char* ret_entry = NULL;
+    size_t error_bytes_num;
+    struct aesd_dev* device = filp->private_data;
+    if(mutex_lock_interruptible(&device->lock))
+	return -ERESTARTSYS;
+    if(device->buffer_entity.size == 0){
+  	device->buffer_entity.buffptr = kzalloc(count, GFP_KERNEL);
+    } 
     else{
-    	dev->buffer_entity.buffptr = krealloc(dev->buffer_entity.buffptr, (dev->buffer_entity.size + count)*sizeof(char), GFP_KERNEL);
+  	device->buffer_entity.buffptr = krealloc(device->buffer_entity.buffptr, device->buffer_entity.size + count, GFP_KERNEL);
     }
-    copy_from_user((void *)(&dev->buffer_entity.buffptr[dev->buffer_entity.size]), buf, count);
-    retval = count;
-    dev->buffer_entity.size += count;
-    for (i=0; i<dev->buffer_entity.size; i++)
-    {
-    	if(dev->buffer_entity.buffptr[i] == '\n')
-    	{
-    		aesd_circular_buffer_add_entry(&dev->cbuf_entity, &dev->buffer_entity);
-    		dev->buffer_entity.buffptr = NULL;
-    		dev->buffer_entity.size = 0;
-	}
-	}
-	mutex_unlock(&aesd_device.lock);
-	*f_pos = 0;
-    return retval;
+
+if(device->buffer_entity.buffptr == NULL)
+{
+  retval = -ENOMEM;
+  goto out;
+}  
+
+retval = count;
+
+error_bytes_num = copy_from_user((void*)(&device->buffer_entity.buffptr[device->buffer_entity.size]), buf, count);
+
+if(error_bytes_num)
+{
+  retval = retval - error_bytes_num;
+}
+
+device->buffer_entity.size += retval;
+
+
+if(strchr((char*)(device->buffer_entity.buffptr), '\n'))
+{
+  aesd_circular_buffer_add_entry(&device->cbuf_entity, &device->buffer_entity);
+  device->buffer_entity.buffptr = NULL;
+  device->buffer_entity.size = 0;
+}
+out:
+mutex_unlock(&device->lock);
+return retval;
 }
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
