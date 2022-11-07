@@ -86,47 +86,52 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
-    ssize_t retval = -ENOMEM;
-    //const char* ret_entry = NULL;
-    size_t error_bytes_num;
-    struct aesd_dev* device = filp->private_data;
-    if(mutex_lock_interruptible(&device->lock))
-	return -ERESTARTSYS;
-    if(device->buffer_entity.size == 0){
-  	device->buffer_entity.buffptr = kzalloc(count, GFP_KERNEL);
-    } 
-    else{
-  	device->buffer_entity.buffptr = krealloc(device->buffer_entity.buffptr, device->buffer_entity.size + count, GFP_KERNEL);
+    ssize_t retval = 0;
+    const char * ret_entry = NULL;
+    size_t num_bytes = 0;
+    struct aesd_dev *dev = NULL;
+    PDEBUG("aesd_write begin");
+    PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
+    /**
+     * TODO: handle write
+     */
+    dev = filp->private_data;
+    if (!dev) {
+        PDEBUG("aesd_write: dev == NULL");
+        return -ENOMEM;
     }
 
-if(device->buffer_entity.buffptr == NULL)
-{
-  retval = -ENOMEM;
-  goto out;
-}  
+    if (mutex_lock_interruptible(&dev->lock)) {
+        PDEBUG("aesd_write: mutex_lock_interruptible");
+        return -ERESTARTSYS;
+    }
 
-retval = count;
+    dev->buffer_entity.buffptr = (dev->buffer_entity.size == 0) ? kzalloc(count, GFP_KERNEL) :  krealloc(dev->buffer_entity.buffptr, dev->buffer_entity.size + count, GFP_KERNEL);
 
-error_bytes_num = copy_from_user((void*)(&device->buffer_entity.buffptr[device->buffer_entity.size]), buf, count);
+    if (!dev->buffer_entity.buffptr) {
+        mutex_unlock(&dev->lock);
+        PDEBUG("aesd_write: mutex_unlock");
+        return -ENOMEM;
+    }
 
-if(error_bytes_num)
-{
-  retval = retval - error_bytes_num;
+    num_bytes = copy_from_user((void *)(&dev->buffer_entity.buffptr[dev->buffer_entity.size]), buf, count);
+    retval = num_bytes ? count - num_bytes : count;
+
+    dev->buffer_entity.size += retval;
+   
+    if (strchr((char*)(dev->buffer_entity.buffptr), '\n')) {
+        ret_entry = aesd_circular_buffer_add_entry(&dev->cbuf_entity, &dev->buffer_entity);
+        if (ret_entry) {
+            kfree(ret_entry);
+        }
+        dev->buffer_entity.size = 0;
+        dev->buffer_entity.buffptr = NULL;
+    }
+    mutex_unlock(&dev->lock);
+    PDEBUG("aesd_write end");
+    return retval;
 }
 
-device->buffer_entity.size += retval;
-
-
-if(strchr((char*)(device->buffer_entity.buffptr), '\n'))
-{
-  aesd_circular_buffer_add_entry(&device->cbuf_entity, &device->buffer_entity);
-  device->buffer_entity.buffptr = NULL;
-  device->buffer_entity.size = 0;
-}
-out:
-mutex_unlock(&device->lock);
-return retval;
-}
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
     .read =     aesd_read,
