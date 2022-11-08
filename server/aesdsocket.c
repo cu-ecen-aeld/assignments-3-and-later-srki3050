@@ -31,9 +31,9 @@
 #include <netdb.h>
 
 #ifdef USE_AESD_CHAR_DEVICE
-	#define STORE_IN_THIS_FILE "/dev/aesdchar"
+	#define STORE_IN_THIS_FILE ("/dev/aesdchar")
 #else
-	#define STORE_IN_THIS_FILE "/var/tmp/aesdsocketdata"
+	#define STORE_IN_THIS_FILE ("/var/tmp/aesdsocketdata")
 	#define TIMESTAMP_SIZE 50
 #endif
 

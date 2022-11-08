@@ -35,8 +35,8 @@ int aesd_open(struct inode *inode, struct file *filp)
     struct aesd_dev *dev = NULL;
     PDEBUG("open");
     dev = container_of(inode->i_cdev, struct aesd_dev,cdev);
-    filp->private_data = dev;
-    return 0;
+    filp->private_data = dev;	/* for other methods */
+    return 0;			/* Success */
 }
 // aesd_release - Deallocate Data 
 int aesd_release(struct inode *inode, struct file *filp)
