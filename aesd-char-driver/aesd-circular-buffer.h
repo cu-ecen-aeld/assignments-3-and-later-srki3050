@@ -32,7 +32,6 @@ struct aesd_buffer_entry
 
 struct aesd_circular_buffer
 {
-    uint8_t string_count;
     /**
      * An array of pointers to memory allocated for the most recent write operations
      */

@@ -2,10 +2,11 @@
  * @file aesd-circular-buffer.c
  * @brief Functions and data related to a circular buffer imlementation
  *
- * @author Dan Walkes
- * @date 2020-03-01
+ * @author Dan Walkes (Edits made by Sricharan Kidambi
+ * @date 2020-03-01   (Edits made by Sricharan on 2022-10-24)
  * @copyright Copyright (c) 2020
- *
+ * @references:	Revisited the circular buffer program done in PES 				course ECEN 5813 - Principles of Embedded Software.
+ 			Obtained Assistance from Swapnil Ghonge on how to write the same program with void return type
  */
 
 #ifdef __KERNEL__
@@ -15,14 +16,24 @@
 #endif
 
 #include "aesd-circular-buffer.h"
-
-size_t calculate_total_characters(struct aesd_circular_buffer *buffer){
-	size_t characters = 0;
-	int loc = 0;
-	while(loc < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED){
-		characters += buffer->entry[loc++].size;
-	}
-	return characters;
+// Writing this for coding convenience
+#define MAX_WRITE AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED
+/*
+* Function	: get_populated_nodes()
+* Purpose	: obtain how much locations has data written there.
+* @param	: an instance to the circular buffer
+* returns	: The current location based on the buffer data	
+*/
+int get_populated_nodes(struct aesd_circular_buffer *buffer){
+int remaining = buffer->out_offs - buffer->in_offs;
+if(buffer->full)
+	return MAX_WRITE;
+else if(buffer->in_offs < buffer->out_offs)
+	return remaining;
+else if(buffer->out_offs < buffer->in_offs)
+	return MAX_WRITE - (remaining) + 1;
+else
+	return 0;
 }
 /**
  * @param buffer the buffer to search for corresponding offset.  Any necessary locking must be performed by caller.
@@ -34,48 +45,37 @@ size_t calculate_total_characters(struct aesd_circular_buffer *buffer){
  * @return the struct aesd_buffer_entry structure representing the position described by char_offset, or
  * NULL if this position is not available in the buffer (not enough data is written).
  */
- //Considering a string example
- //"hello","this","is","AESD","embedded","circular","buffer","for","Assignment7","implementation"
 struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct aesd_circular_buffer *buffer,
             size_t char_offset, size_t *entry_offset_byte_rtn )
 {
-    /**
-    * TODO: implement per description
-    */
-    //locate an entry correspoding to a position
-    //This is just going to map an overall offset of the total number of bytes that are received across all entries to a specific pointer where that string is located and then the offset within that string that's being referenced by char offset.
-        size_t current_string_length = buffer->entry[buffer->in_offs].size;
-        size_t total_no_of_characters;
-    	// Check if your list actually exists
-	if(!buffer)
-		return NULL;
-	// check if you are trying to encode a value in an unexisting location
-	if(!entry_offset_byte_rtn)
-		return NULL;
-	
-	//the above example will give a total no of characters = 5+4+2+3+8+8+6+3+11+14 = 64
-	total_no_of_characters = calculate_total_characters(buffer);
-	if(char_offset >= total_no_of_characters){
-		return NULL;
-	}
-	//consider in_offs entry is embedded, current string length = 8, then you can return that entry back as offset would point to 'e' in "embedded"
-	if(char_offset < current_string_length){
+// The function has to return the position described by char_offset
+struct aesd_buffer_entry *position = NULL;
+int current_location = get_populated_nodes(buffer);
+int i;
+uint8_t index;
+// Check if your list actually exists
+if(!buffer)
+	return NULL;
+// check if you are trying to encode a value in an unexisting location
+if(!entry_offset_byte_rtn)
+	return NULL;
+// obtain the populated nodes and current pointing index
+index = buffer->out_offs;
+// start looping through those nodes to see if offset matches
+for(i = current_location;i > 0;i--){
+	if(buffer->entry[index].size >= char_offset + 1){
+		position = &buffer->entry[index];
 		*entry_offset_byte_rtn = char_offset;
-		return &(buffer->entry[buffer->in_offs]);
+		break;
 	}
-	//if offset > 8, then you will be taking the next string to account
 	else{
-		int position = buffer->in_offs + 1;
-		while((current_string_length + buffer->entry[position].size) <= char_offset){
-			current_string_length += buffer->entry[position].size;
-			position = (position + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
-		}
-		*entry_offset_byte_rtn = char_offset - current_string_length;
-		return &(buffer->entry[position]);
+		char_offset -= buffer->entry[index].size;
 	}
-	//if given offset is greater than total size, then corresponding offset cannot be calculated NULL is returned in that case as well.
-	
-    return NULL;
+	index++;
+	index %= MAX_WRITE;
+}
+// if data is not written or position is not available this will return NULL
+return position;
 }
 
 /**
@@ -87,25 +87,29 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 */
 void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
 {
-    /**
-    * TODO: implement per description
-    */
-    if(!buffer)
+// Check if your list actually exists
+if(!buffer)
 	return;
-    // check if you are trying to non-existent value in memory
-    if(!add_entry)
+// check if you are trying to encode an unexisting value
+if(!add_entry)
 	return;
-    buffer->entry[buffer->in_offs] = *add_entry;
-    buffer->in_offs = (buffer->in_offs + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
-    if(buffer->string_count == AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED){
-    	buffer->full = true;
-    }
-    if(buffer->full){
-    	buffer->out_offs = (buffer->out_offs + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
-    }
-    else{
-    	buffer->string_count++;
-    }
+// Perform circular buffer write operation
+buffer->entry[buffer->in_offs].size = add_entry->size;
+buffer->entry[buffer->in_offs].buffptr = add_entry->buffptr;
+// Increment the writing pointer and wrap around the circular buffer
+buffer->in_offs++;
+buffer->in_offs %= MAX_WRITE;
+//Check full case conditions
+if(buffer->in_offs == buffer->out_offs)
+	buffer->full = true;
+//if buffer is full - expectation is to overwrite the most oldest elements, meaning, where the buffer->out_offs pointer is currently residing.
+//Increment the read pointer and wrap around the circular buffer.
+else if(buffer->full)
+{
+	buffer->out_offs++;
+	buffer->out_offs %= MAX_WRITE;
+}
+return;
 }
 
 /**

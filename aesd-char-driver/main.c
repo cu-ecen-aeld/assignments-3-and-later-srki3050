@@ -138,13 +138,13 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 		{
 			kfree(dev->buffer.entry[dev->buffer.out_offs].buffptr);
 		}
-			aesd_circular_buffer_add_entry(&dev->buffer, &dev->entry);
-			dev->entry.buffptr = NULL;
-			dev->entry.size = 0;
-			PDEBUG("Write complete no full\n");
+		aesd_circular_buffer_add_entry(&dev->buffer, &dev->entry);
+		dev->entry.buffptr = NULL;
+		dev->entry.size = 0;
+		PDEBUG("Write complete no full\n");
 	}
-    mutex_unlock(&dev->lock);
-    return retval;
+    	mutex_unlock(&dev->lock);
+   	return count;
 }
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
