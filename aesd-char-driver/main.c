@@ -30,13 +30,13 @@ struct aesd_dev aesd_device;
 //Source Linux Device Drivers chapter 3
 int aesd_open(struct inode *inode, struct file *filp)
 {
-    struct aesd_dev *dev = NULL;
+    //struct aesd_dev *dev = NULL;
     PDEBUG("open");
     /**
      * TODO: handle open
      */
-    dev = container_of(inode->i_cdev, struct aesd_dev, cdev);
-    filp->private_data = dev;
+    //dev = container_of(inode->i_cdev, struct aesd_dev, cdev);
+    //filp->private_data = dev;
     return 0;
 }
 
@@ -190,6 +190,7 @@ int aesd_init_module(void)
     if( result ) {
         unregister_chrdev_region(dev, 1);
     }
+    PDEBUG("\r\nMODULE LOADED SUCCESSFULLY");
     return result;
 
 }
