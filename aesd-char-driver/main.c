@@ -59,23 +59,31 @@ int aesd_release(struct inode *inode, struct file *filp)
 ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                 loff_t *f_pos)
 {
-	ssize_t retval = 0;
+	ssize_t buffer_entry_offset = 0;
+	ssize_t bytes_to_user = 0;
+	ssize_t read_bytes = 0;
+	int lock_status;
+	struct aesd_buffer_entry * pos = NULL;
 	struct aesd_dev *dev = (struct aesd_dev *)filp->private_data;
-    	struct aesd_buffer_entry *pos = NULL;
-    	ssize_t read_bytes = 0;
-    	ssize_t buffer_entry_offset = 0;
-    	PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
-    	mutex_lock_interruptible(&aesd_device.lock);
-    	/****************************** Perform Read Function ***********************************/
-    	pos = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buffer, *f_pos, &buffer_entry_offset);
-    	read_bytes = pos->size - buffer_entry_offset;
+	PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
+	lock_status = mutex_lock_interruptible(&aesd_device.lock);
+	if (lock_status)
+		return -ERESTARTSYS;
+	pos = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buffer, *f_pos, &buffer_entry_offset);
+	if(!pos) {
+		mutex_unlock(&aesd_device.lock);
+		return 0;
+	}
+	read_bytes = pos->size - buffer_entry_offset;
     	read_bytes = read_bytes > count?count:read_bytes;
-    	copy_to_user(buf, (pos->buffptr + buffer_entry_offset), read_bytes);
-    	retval = read_bytes;
-    	*f_pos += retval;
-    	/****************************** Read function Complete **********************************/
-    	mutex_unlock(&aesd_device.lock);
-	return retval;
+	bytes_to_user = copy_to_user(buf, pos->buffptr + buffer_entry_offset, read_bytes);
+	if (bytes_to_user) {
+		mutex_unlock(&aesd_device.lock);
+		return 0;
+	}
+	*f_pos = *f_pos + read_bytes;
+	mutex_unlock(&aesd_device.lock);
+	return read_bytes;
 }
 //Function:	aesd_write
 //Purpose:	Accept data from the user space and write the data to the hardware
@@ -87,24 +95,24 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
-	ssize_t retval = -ENOMEM;
+	int interuptible_lock, total_bytes_copied;
 	int i;
 	struct aesd_dev *dev = (struct aesd_dev *)filp->private_data;
 	PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
-    	int interuptible_lock = mutex_lock_interruptible(&aesd_device.lock);
+    	interuptible_lock = mutex_lock_interruptible(&aesd_device.lock);
+    	if(interuptible_lock){
+    		return -ERESTARTSYS;
+    	}
     	/********************************************Accessing data and perform write function****************************************/
     	//if there are no elements in the circular buffer
     	if(!dev->entry.size) {
     		//allocate the necessary amount of memory in the kernel for the required bytes you are writing
     		dev->entry.buffptr = kmalloc((sizeof(char)*count),GFP_KERNEL);
-    		//set it to null
-    		memset(dev->entry.buffptr, 0, sizeof(char)*count);
     	}	
     	else{
     		dev->entry.buffptr = krealloc(dev->entry.buffptr, (dev->entry.size + count)*sizeof(char), GFP_KERNEL);
     	}
-    	int total_bytes_copied = copy_from_user((void *)(&dev->entry.buffptr[dev->entry.size]), buf, count);
-    	retval = count;
+    	total_bytes_copied = copy_from_user((void *)(&dev->entry.buffptr[dev->entry.size]), buf, count);
     	dev->entry.size += count;
     	for (i=0; i<dev->entry.size; i++)
     	{
@@ -118,7 +126,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     	/******************************************Write complete, release the resources**********************************************/
     	mutex_unlock(&aesd_device.lock);
     	*f_pos = 0;
-    	return retval;
+    	return count;
 }
 //THIS_MODULE - used to prevent the module from being unloaded while the structure is still in use
 //Macro to the module variable that points to the current module.

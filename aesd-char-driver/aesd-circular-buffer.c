@@ -51,28 +51,23 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 // The function has to return the position described by char_offset
 struct aesd_buffer_entry *position = NULL;
 int current_location = get_populated_nodes(buffer);
-int i;
 uint8_t index;
-// Check if your list actually exists
-if(!buffer)
+// Check if your list actually exists and if you are trying to encode a value in an unexisting location
+if(!buffer || !entry_offset_byte_rtn)
 	return NULL;
-// check if you are trying to encode a value in an unexisting location
-if(!entry_offset_byte_rtn)
-	return NULL;
-// obtain the populated nodes and current pointing index
 index = buffer->out_offs;
 // start looping through those nodes to see if offset matches
-for(i = current_location;i > 0;i--){
-	if(buffer->entry[index].size >= char_offset + 1){
-		position = &buffer->entry[index];
+while(current_location){
+	if(char_offset <= buffer->entry[index].size - 1){
 		*entry_offset_byte_rtn = char_offset;
+		position = &buffer->entry[index];
 		break;
 	}
 	else{
 		char_offset -= buffer->entry[index].size;
+		index = (index+1) % MAX_WRITE;
+		current_location--;
 	}
-	index++;
-	index %= MAX_WRITE;
 }
 // if data is not written or position is not available this will return NULL
 return position;
@@ -87,28 +82,21 @@ return position;
 */
 void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
 {
-// Check if your list actually exists
-if(!buffer)
+static uint8_t entries = 0;
+// Check if your list actually exists or if you are trying to encode an unexisting value
+if(!buffer || (!add_entry))
 	return;
-// check if you are trying to encode an unexisting value
-if(!add_entry)
-	return;
-// Perform circular buffer write operation
-buffer->entry[buffer->in_offs].size = add_entry->size;
-buffer->entry[buffer->in_offs].buffptr = add_entry->buffptr;
-// Increment the writing pointer and wrap around the circular buffer
-buffer->in_offs++;
-buffer->in_offs %= MAX_WRITE;
+if(buffer->full)
+	buffer->out_offs = (buffer->out_offs + 1) % MAX_WRITE;
+// Perform circular buffer write operation and Increment the writing pointer and wrap around the circular buffer
+buffer->entry[buffer->in_offs] = *add_entry;
+buffer->in_offs = (buffer->in_offs+1) % MAX_WRITE;
+entries++;
 //Check full case conditions
-if(buffer->in_offs == buffer->out_offs)
+if(entries == MAX_WRITE)
 	buffer->full = true;
 //if buffer is full - expectation is to overwrite the most oldest elements, meaning, where the buffer->out_offs pointer is currently residing.
-//Increment the read pointer and wrap around the circular buffer.
-else if(buffer->full)
-{
-	buffer->out_offs++;
-	buffer->out_offs %= MAX_WRITE;
-}
+//Increment the read pointer and wrap around the circular buffer
 return;
 }
 
