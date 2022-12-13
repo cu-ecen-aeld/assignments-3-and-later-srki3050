@@ -30,7 +30,12 @@
 #include <string.h>
 #include <netdb.h>
 
-#define TIMESTAMP_SIZE 50
+#ifdef USE_AESD_CHAR_DEVICE
+	#define STORE_IN_THIS_FILE ("/dev/aesdchar")
+#else
+	#define STORE_IN_THIS_FILE ("/var/tmp/aesdsocketdata")
+	#define TIMESTAMP_SIZE 50
+#endif
 
 int fd;
 int sockfd;
@@ -86,7 +91,9 @@ void signal_handler(int signo)
 	if (signo == SIGALRM)
 	{
 		printf("SIGALRM ALERT\n");
-		append_time_stamp();
+		#ifndef USE_AESD_CHAR_DEVICE
+			append_time_stamp();
+		#endif
 		alarm(10);
 	}
 	// In case a SIGINT or SIGTERM happens (pressing ctrl + c, graceful cleanup operation)
@@ -95,7 +102,7 @@ void signal_handler(int signo)
 		printf("Caught signal %d\n", signo);
 		close(fd);
 		close(sockfd);
-		remove("/var/tmp/aesdsocketdata");
+		remove(STORE_IN_THIS_FILE);
 		delete_all_the_memory();
 		exit (0);
 	}
@@ -235,7 +242,7 @@ int main(int argc, char **argv) {
 	}
 
 /***************************************************************************************** Listening to the Server ***********************************************************************************/
-fd = open("/var/tmp/aesdsocketdata",O_RDWR|O_CREAT|O_APPEND, 0777);
+fd = open(STORE_IN_THIS_FILE,O_RDWR|O_CREAT|O_APPEND, 0777);
 if(fd == -1){
 	perror("Unable to open the file");
 }
