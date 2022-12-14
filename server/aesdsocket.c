@@ -42,7 +42,6 @@
 	#define STORE_IN_THIS_FILE ("/dev/aesdchar")
 #else
 	#define STORE_IN_THIS_FILE ("/var/tmp/aesdsocketdata")
-	#define TIMESTAMP_SIZE 50
 #endif
 
 #if USE_AESD_CHAR_DEVICE
@@ -132,7 +131,7 @@ void * thread_function(void* thread_param)
 	int current_bytes = 0;
 	data->thread_complete_status=false;
 	fd = open(STORE_IN_THIS_FILE,O_RDWR|O_CREAT|O_APPEND, 0777);
-	if(fd == -1){
+	if(fd < 0){
 		perror("Unable to open the file");
 	}
 	while(packet_in_progress)
@@ -186,7 +185,7 @@ void * thread_function(void* thread_param)
 	{
 		printf("send failed\n");
 	}
-	pthread_mutex_lock(&mutex_lock);
+	pthread_mutex_unlock(&mutex_lock);
     }
 	printf("send complete\n");
 	packet_in_progress = true;
@@ -222,14 +221,13 @@ int main(int argc, char **argv) {
 	int yes = 1;
 	if(setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1){
 		perror("Unable to Setup reusing ability of the socket port and ip");
-		exit(-1);
+		exit(1);
 	}
 	
 	int sockbind = bind(sockfd, (struct sockaddr *)&server, sizeof(server));
 	if(sockbind == -1){
 		close(sockfd);
 		perror("Unable to bind Properly");
-		exit(-1);
 	}
 	syslog(LOG_USER, "Binded Connection from 9000");
 /*********************************************************************************** Perform the Daemonising Process *********************************************************************************/
@@ -269,6 +267,8 @@ int main(int argc, char **argv) {
 	}
 
 /***************************************************************************************** Listening to the Server ***********************************************************************************/
+pthread_mutex_init(&mutex_lock, NULL);
+TAILQ_INIT(&head);
 syslog(LOG_USER,"File successfully opened");
 int listener = listen(sockfd, 10);
 if(listener < 0){											// Backlog value set as 10 as prescribed in the Beej's user guide on sockets.
@@ -280,8 +280,6 @@ syslog(LOG_USER, "Listening phase completed");
 socklen_t clientfd;
 struct sockaddr_in clientadd;
 bool alarm_flag = false;
-pthread_mutex_init(&mutex_lock, NULL);
-TAILQ_INIT(&head);
 	while (1) {
 	// Spin a new thread on every connection accept
 		thread_data_t *datap = (thread_data_t *) malloc(sizeof(thread_data_t));
