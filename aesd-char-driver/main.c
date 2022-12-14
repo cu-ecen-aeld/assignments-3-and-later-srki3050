@@ -22,10 +22,11 @@
 #include <linux/kdev_t.h>
 #include "aesdchar.h"
 #include "aesd-circular-buffer.h"
+#include "aesd_ioctl.h"
 int aesd_major =   0;
 int aesd_minor =   0;
 //Module description required for any module
-MODULE_AUTHOR("Your Name Here"); /** TODO: fill in your name **/
+MODULE_AUTHOR("srki3050"); /** TODO: fill in your name **/
 MODULE_LICENSE("Dual BSD/GPL");
 
 struct aesd_dev aesd_device;
@@ -128,6 +129,74 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     	*f_pos = 0;
     	return count;
 }
+static long aesd_set_offset(struct file *filp, unsigned int cmd, unsigned int offset)
+{
+    struct aesd_dev *dev;
+    loff_t pos;
+    int retval = 0; 
+    PDEBUG("aesd_set_offset begin");
+    dev = filp->private_data;
+    if (!dev) {
+        PDEBUG("aesd_set_offset: dev == NULL");
+        return -ENOMEM;
+    }
+    if (!filp->private_data) {
+        PDEBUG("aesd_set_offset: file->private_data == NULL");
+        return -EINVAL;
+    }
+    if (mutex_lock_interruptible(&dev->lock)) {
+        PDEBUG("aesd_set_offset: mutex_lock_interruptible");
+        return -ERESTARTSYS;
+    }
+    pos = aesd_circular_buffer_llseek(&dev->buffer, cmd, offset);
+    if (pos == -EINVAL) {
+        retval = -EINVAL;
+    } else {
+        filp->f_pos = pos;
+    }
+    mutex_unlock(&dev->lock);
+    return retval;
+}
+long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+    int retval = 0;
+    size_t num_bytes = 0;
+    struct aesd_dev *dev = NULL;
+    struct aesd_seekto seekto;
+    PDEBUG("aesd_ioctl begin");
+    dev = filp->private_data;
+    if ((_IOC_TYPE(cmd) != AESD_IOC_MAGIC) || (_IOC_NR(cmd) > AESDCHAR_IOC_MAXNR) || (cmd != AESDCHAR_IOCSEEKTO)) {
+        return -ENOTTY;
+    }
+    if (cmd == AESDCHAR_IOCSEEKTO) {
+        num_bytes = copy_from_user(&seekto, (void *)arg, sizeof(seekto));
+        if (num_bytes != 0)
+            return -EFAULT;
+        
+        retval = aesd_set_offset(filp, seekto.write_cmd, seekto.write_cmd_offset);
+    }
+    return retval;
+}
+loff_t aesd_llseek(struct file *filp, loff_t offset, int whence)
+{
+    loff_t retval = 0;
+    struct aesd_dev *dev = NULL;
+    size_t total_size = get_the_total_buffer_size(&dev->buffer);
+    PDEBUG("aesd_llseek begin");
+    dev = filp->private_data;
+    if (!dev) {
+        PDEBUG("aesd_llseek: dev == NULL");
+        return -ENOMEM;
+    }
+    if (mutex_lock_interruptible(&dev->lock)) {
+        PDEBUG("aesd_llseek: mutex_lock_interruptible");
+        return -EINTR;
+    }
+    retval = fixed_size_llseek(filp, offset, whence, total_size);
+    mutex_unlock(&dev->lock);
+    return retval;
+}
+
 //THIS_MODULE - used to prevent the module from being unloaded while the structure is still in use
 //Macro to the module variable that points to the current module.
 struct file_operations aesd_fops = {
@@ -136,6 +205,8 @@ struct file_operations aesd_fops = {
     .write =    aesd_write,
     .open =     aesd_open,
     .release =  aesd_release,
+    .llseek =   aesd_llseek,
+    .unlocked_ioctl =   aesd_ioctl,
 };
 
 static int aesd_setup_cdev(struct aesd_dev *dev)

@@ -18,6 +18,26 @@
 #include "aesd-circular-buffer.h"
 // Writing this for coding convenience
 #define MAX_WRITE AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED
+#ifdef __KERNEL__
+/* Function: 	aesd_circular_buffer_llseek
+ * Purpose:	find the position of the current offset, for which you need to find size till the current number and move the pointer to that location
+ * Parameters:	The circular buffer instance, how many buffers have been completed, offset position (where in the buffer is the current location)
+ * Returns:	loff_t is a typedef for long long 64-bit data on gcc terminology	
+ */
+loff_t aesd_circular_buffer_llseek(struct aesd_circular_buffer *buffer, unsigned int number, unsigned int offset) {
+    int offset_for_the_current_entry = 0, i;
+    if ((number >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) || (offset >= buffer->entry[number].size)) {
+        return -EINVAL;
+    }
+    for (i = 0; i < number; i++) {
+	if ((!(&buffer->entry[i])) || buffer->entry[i].size == 0) {
+            return -EINVAL;
+        }
+        offset_for_the_current_entry += buffer->entry[i].size;
+    }
+    return (offset + offset_for_the_current_entry);
+}
+#endif
 /*
 * Function	: get_populated_nodes()
 * Purpose	: obtain how much locations has data written there.
@@ -34,6 +54,23 @@ else if(buffer->out_offs < buffer->in_offs)
 	return MAX_WRITE - (remaining) + 1;
 else
 	return 0;
+}
+/*
+* Function	: get_the_total_buffer_size()
+* Purpose	: find the total number of characters in the buffer.
+* @param	: an instance to the circular buffer
+* returns	: total size of the buffer	
+*/
+size_t get_the_total_buffer_size(struct aesd_circular_buffer *buffer){
+	size_t total_size = 0;
+	int nodes = get_populated_nodes(buffer);
+	uint8_t index = buffer->out_offs;
+	while(nodes > 0){
+		total_size += buffer->entry[index].size;
+		index = (index + 1) % MAX_WRITE;
+		nodes--;
+	}
+	return total_size;
 }
 /**
  * @param buffer the buffer to search for corresponding offset.  Any necessary locking must be performed by caller.
