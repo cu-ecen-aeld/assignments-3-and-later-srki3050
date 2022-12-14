@@ -40,12 +40,9 @@
 #define TIMESTAMP_SIZE 100
 #ifdef USE_AESD_CHAR_DEVICE
 	#define STORE_IN_THIS_FILE ("/dev/aesdchar")
+	const char *perform_ioctl = "AESDCHAR_IOCSEEKTO:";
 #else
 	#define STORE_IN_THIS_FILE ("/var/tmp/aesdsocketdata")
-#endif
-
-#if USE_AESD_CHAR_DEVICE
-const char *perform_ioctl = "AESDCHAR_IOCSEEKTO:";
 #endif
 
 int fd;
@@ -94,7 +91,6 @@ void delete_all_the_memory()
 		free(datap);
 	}
 	pthread_mutex_destroy(&mutex_lock);
-	exit(0);
 }
 // Signal handler function to terminate during SIGINT and SIGTERM and add timestamp every 10 seconds
 void signal_handler(int signo)
@@ -158,6 +154,11 @@ void * thread_function(void* thread_param)
 			packet_in_progress = false;
 		}
 	}
+   	/*	1.	String sent to Socket AESDCHAR_IOCSEEKTO:X,Y where X and Y are unsigned decimal integer values.
+			X - Write Command to seek into, Y - Offset within write command
+		2.	These values are sent to AESDCHAR_SEEKTO ioctl
+			Then IOCTL command will perform before writes to device
+		3.	Read file and return to socket uses same file descriptor used to send to ioctl. So that file offset is honored read command.*/
 	if(strncmp(write_buffer, perform_ioctl, strlen(perform_ioctl)) == 0) {
         	struct aesd_seekto seekto;
         	sscanf(write_buffer, "AESDCHAR_IOCSEEKTO:%d,%d", &seekto.write_cmd, &seekto.write_cmd_offset);
@@ -173,22 +174,23 @@ void * thread_function(void* thread_param)
 		perror("write failed\n");
 	}
 	printf("write success\n");
+	// Once the process is complete, perform unlock for the data to be available the next time.
 	pthread_mutex_unlock(&mutex_lock);
 	}
-	// Once file is written move the file to current position
-	//lseek(fd, 0, SEEK_SET);
-	
 	while(read(fd, &read_data, 1) != 0) {
+	// Lock the program to prevent mutual sharing of resources by multiple threads simoultaneously
 	pthread_mutex_lock(&mutex_lock);
 	int sent_status = send(data->clientfd, &read_data, 1, 0);
 	if (sent_status == 0)
 	{
 		printf("send failed\n");
 	}
+	// Once the process is complete, perform unlock for the data to be available the next time.
 	pthread_mutex_unlock(&mutex_lock);
     }
 	printf("send complete\n");
 	packet_in_progress = true;
+	//Once the packet is transmitter, close the socket and open the socket on the next thread execution
 	int close_fd = close(data->clientfd);
 	if(close_fd == 0){
 		syslog(LOG_DEBUG, "Closed connection from %s\n", data->client_ipaddress);
@@ -267,8 +269,6 @@ int main(int argc, char **argv) {
 	}
 
 /***************************************************************************************** Listening to the Server ***********************************************************************************/
-pthread_mutex_init(&mutex_lock, NULL);
-TAILQ_INIT(&head);
 syslog(LOG_USER,"File successfully opened");
 int listener = listen(sockfd, 10);
 if(listener < 0){											// Backlog value set as 10 as prescribed in the Beej's user guide on sockets.
@@ -280,6 +280,8 @@ syslog(LOG_USER, "Listening phase completed");
 socklen_t clientfd;
 struct sockaddr_in clientadd;
 bool alarm_flag = false;
+pthread_mutex_init(&mutex_lock, NULL);
+TAILQ_INIT(&head);
 	while (1) {
 	// Spin a new thread on every connection accept
 		thread_data_t *datap = (thread_data_t *) malloc(sizeof(thread_data_t));
@@ -300,12 +302,10 @@ bool alarm_flag = false;
 	datap = NULL;
 	free(datap);
 	// Trigger an alarm for 10 seconds to efficiently call SIGALRM to append a timestamp
-	if(!STORE_IN_THIS_FILE){
 	if (!alarm_flag) {
 		alarm_flag = true;
 		printf("alarm set\n");
 		alarm(10);
-	}
 	}
 	thread_data_t *entry = NULL;
 	// Source: Queue.h functions handbook line 181

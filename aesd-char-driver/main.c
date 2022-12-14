@@ -129,74 +129,74 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     	*f_pos = 0;
     	return count;
 }
-static long aesd_set_offset(struct file *filp, unsigned int cmd, unsigned int offset)
-{
-    struct aesd_dev *dev;
-    loff_t pos;
-    int retval = 0; 
-    PDEBUG("aesd_set_offset begin");
-    dev = filp->private_data;
-    if (!dev) {
-        PDEBUG("aesd_set_offset: dev == NULL");
-        return -ENOMEM;
-    }
-    if (!filp->private_data) {
-        PDEBUG("aesd_set_offset: file->private_data == NULL");
-        return -EINVAL;
-    }
-    if (mutex_lock_interruptible(&dev->lock)) {
-        PDEBUG("aesd_set_offset: mutex_lock_interruptible");
-        return -ERESTARTSYS;
-    }
-    pos = aesd_circular_buffer_llseek(&dev->buffer, cmd, offset);
-    if (pos == -EINVAL) {
-        retval = -EINVAL;
-    } else {
-        filp->f_pos = pos;
-    }
-    mutex_unlock(&dev->lock);
-    return retval;
-}
+/* Function	: aesd_ioctl
+ * Purpose	: Perform the IOCTL command if the argument by calling writes data to the kernel and expecting information back.
+ * Parameters	: pointer to the aesd_device, command to verify against and a pointer from which the user space is requesting data to the kernel
+ * Returns	: Whether IOCTL can be performed or not, or errors like memory violation, seg faults and incorrect locking
+ * References	: https://man7.org/linux/man-pages/man2/ioctl.2.html
+ */
 long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
-    int retval = 0;
-    size_t num_bytes = 0;
+    size_t bytes_copied_From_user = 0;
+    int lock_status;
+    loff_t pos;
     struct aesd_dev *dev = NULL;
     struct aesd_seekto seekto;
-    PDEBUG("aesd_ioctl begin");
     dev = filp->private_data;
-    if ((_IOC_TYPE(cmd) != AESD_IOC_MAGIC) || (_IOC_NR(cmd) > AESDCHAR_IOC_MAXNR) || (cmd != AESDCHAR_IOCSEEKTO)) {
+    lock_status = mutex_lock_interruptible(&dev->lock);
+    if(lock_status){
+    	mutex_unlock(&dev->lock);
+    	return -ERESTARTSYS;
+    }
+    if(!dev){
+    	mutex_unlock(&dev->lock);
+    	return -ENOMEM;
+    }	
+    else if ((_IOC_TYPE(cmd) != AESD_IOC_MAGIC) || (_IOC_NR(cmd) > AESDCHAR_IOC_MAXNR) || (cmd != AESDCHAR_IOCSEEKTO)){
+    	mutex_unlock(&dev->lock);
         return -ENOTTY;
     }
     if (cmd == AESDCHAR_IOCSEEKTO) {
-        num_bytes = copy_from_user(&seekto, (void *)arg, sizeof(seekto));
-        if (num_bytes != 0)
+        bytes_copied_From_user = copy_from_user(&seekto, (void *)arg, sizeof(seekto));
+        if (bytes_copied_From_user)
             return -EFAULT;
         
-        retval = aesd_set_offset(filp, seekto.write_cmd, seekto.write_cmd_offset);
+        pos = aesd_circular_buffer_llseek(&dev->buffer, seekto.write_cmd, seekto.write_cmd_offset);
+	if (pos == -EINVAL) {
+		mutex_unlock(&dev->lock);
+        	return -EINVAL;
+    	} 
+    	else {
+        	filp->f_pos = pos;
+        	mutex_unlock(&dev->lock);
+    	}
     }
-    return retval;
+    return 0;
 }
+/* Function	: aesd_llseek
+ * Purpose	: Perform the IOCTL command if the argument by calling writes data to the kernel and expecting information back.
+ * Parameters	: pointer to the aesd_device, long value and a pointer from which the user space is requesting data to the kernel
+ * Returns	: Whether IOCTL can be performed or not, or errors like memory violation, seg faults and incorrect locking
+ * References	: https://man7.org/linux/man-pages/man2/llseek.2.html
+ */
 loff_t aesd_llseek(struct file *filp, loff_t offset, int whence)
 {
     loff_t retval = 0;
+    int lock_status;
     struct aesd_dev *dev = NULL;
-    size_t total_size = get_the_total_buffer_size(&dev->buffer);
     PDEBUG("aesd_llseek begin");
     dev = filp->private_data;
     if (!dev) {
-        PDEBUG("aesd_llseek: dev == NULL");
         return -ENOMEM;
     }
-    if (mutex_lock_interruptible(&dev->lock)) {
-        PDEBUG("aesd_llseek: mutex_lock_interruptible");
+    lock_status = mutex_lock_interruptible(&dev->lock);
+    if (lock_status) {
         return -EINTR;
     }
-    retval = fixed_size_llseek(filp, offset, whence, total_size);
+    retval = fixed_size_llseek(filp, offset, whence, get_the_total_buffer_size(&dev->buffer));
     mutex_unlock(&dev->lock);
     return retval;
 }
-
 //THIS_MODULE - used to prevent the module from being unloaded while the structure is still in use
 //Macro to the module variable that points to the current module.
 struct file_operations aesd_fops = {
