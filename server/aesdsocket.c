@@ -36,7 +36,8 @@
 #include <string.h>
 #include <netdb.h>
 #include "../aesd-char-driver/aesd_ioctl.h"
-
+#define USE_AESD_CHAR_DEVICE 1
+#define TIMESTAMP_SIZE 100
 #ifdef USE_AESD_CHAR_DEVICE
 	#define STORE_IN_THIS_FILE ("/dev/aesdchar")
 #else
