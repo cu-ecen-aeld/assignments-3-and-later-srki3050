@@ -39,11 +39,13 @@
 
 #ifdef USE_AESD_CHAR_DEVICE
 	#define STORE_IN_THIS_FILE ("/dev/aesdchar")
-	const char *perform_ioctl = "AESDCHAR_IOCSEEKTO:";
 #else
 	#define STORE_IN_THIS_FILE ("/var/tmp/aesdsocketdata")
 	#define TIMESTAMP_SIZE 50
-	const char *perform_ioctl = "";
+#endif
+
+#if USE_AESD_CHAR_DEVICE
+const char *perform_ioctl = "AESDCHAR_IOCSEEKTO:";
 #endif
 
 int fd;
@@ -91,6 +93,8 @@ void delete_all_the_memory()
 		TAILQ_REMOVE(&head, datap, entries);
 		free(datap);
 	}
+	pthread_mutex_destroy(&mutex_lock);
+	exit(0);
 }
 // Signal handler function to terminate during SIGINT and SIGTERM and add timestamp every 10 seconds
 void signal_handler(int signo)
@@ -113,7 +117,6 @@ void signal_handler(int signo)
 		close(sockfd);
 		remove(STORE_IN_THIS_FILE);
 		delete_all_the_memory();
-		pthread_mutex_destroy(&mutex_lock);
 		exit (0);
 	}
 }
@@ -167,14 +170,13 @@ void * thread_function(void* thread_param)
 	pthread_mutex_lock(&mutex_lock);
 	int write_bytes = write(fd, write_buffer, current_bytes);
 	if(write_bytes != current_bytes){
-		printf("write failed\n");
 		perror("write failed\n");
 	}
 	printf("write success\n");
 	pthread_mutex_unlock(&mutex_lock);
 	}
 	// Once file is written move the file to current position
-	lseek(fd, 0, SEEK_SET);
+	//lseek(fd, 0, SEEK_SET);
 	
 	while(read(fd, &read_data, 1) != 0) {
 	pthread_mutex_lock(&mutex_lock);
@@ -266,10 +268,6 @@ int main(int argc, char **argv) {
 	}
 
 /***************************************************************************************** Listening to the Server ***********************************************************************************/
-/*fd = open(STORE_IN_THIS_FILE,O_RDWR|O_CREAT|O_APPEND, 0777);
-if(fd == -1){
-	perror("Unable to open the file");
-}*/
 syslog(LOG_USER,"File successfully opened");
 int listener = listen(sockfd, 10);
 if(listener < 0){											// Backlog value set as 10 as prescribed in the Beej's user guide on sockets.
@@ -303,12 +301,13 @@ TAILQ_INIT(&head);
 	datap = NULL;
 	free(datap);
 	// Trigger an alarm for 10 seconds to efficiently call SIGALRM to append a timestamp
+	if(!STORE_IN_THIS_FILE){
 	if (!alarm_flag) {
 		alarm_flag = true;
 		printf("alarm set\n");
 		alarm(10);
 	}
-	
+	}
 	thread_data_t *entry = NULL;
 	// Source: Queue.h functions handbook line 181
 	TAILQ_FOREACH(entry, &head, entries)
