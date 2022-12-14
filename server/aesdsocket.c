@@ -5,6 +5,12 @@
    			https://github.com/stockrt/queue.h/blob/master/sample.c - Queue.h functions handbook
    			https://man7.org/linux/man-pages/man3/strftime.3.html   - Add timestamp
    			Discussed with Swapnil Ghonge on how to develop ideas to setup linked list functions in queue.h
+   Notes	:	Understanding Changes for Assignment 9
+   			1.	String sent to Socket AESDCHAR_IOCSEEKTO:X,Y where X and Y are unsigned decimal integer values.
+   				X - Write Command to seek into, Y - Offset within write command
+   			2.	These values are sent to AESDCHAR_SEEKTO ioctl
+   				Then IOCTL command will perform before writes to device
+   			3.	Read file and return to socket uses same file descriptor used to send to ioctl. So that file offset is honored read command.
 */
 
 #include <stdio.h>
@@ -29,12 +35,14 @@
 #include <unistd.h>
 #include <string.h>
 #include <netdb.h>
-
+#include "../aesd-char-driver/aesd_ioctl.h"
+#define USE_AESD_CHAR_DEVICE 1
+#define TIMESTAMP_SIZE 100
 #ifdef USE_AESD_CHAR_DEVICE
 	#define STORE_IN_THIS_FILE ("/dev/aesdchar")
+	const char *perform_ioctl = "AESDCHAR_IOCSEEKTO:";
 #else
 	#define STORE_IN_THIS_FILE ("/var/tmp/aesdsocketdata")
-	#define TIMESTAMP_SIZE 50
 #endif
 
 int fd;
@@ -53,8 +61,8 @@ typedef struct node
 typedef TAILQ_HEAD(head_s, node) head_t;
 head_t head;
 // Assignment instruction 2b - Append timestamp in 24hours format
-// parameters : 	None
-// Returns    :	None
+// parameters 	: 	None
+// Returns    	:	None
 // References	:	https://geeksforgeeks.org/strftime-function-in-c/
 void append_time_stamp()
 {
@@ -82,6 +90,7 @@ void delete_all_the_memory()
 		TAILQ_REMOVE(&head, datap, entries);
 		free(datap);
 	}
+	pthread_mutex_destroy(&mutex_lock);
 }
 // Signal handler function to terminate during SIGINT and SIGTERM and add timestamp every 10 seconds
 void signal_handler(int signo)
@@ -117,7 +126,10 @@ void * thread_function(void* thread_param)
 	char *write_buffer = (char*)malloc(sizeof(char));
 	int current_bytes = 0;
 	data->thread_complete_status=false;
-
+	fd = open(STORE_IN_THIS_FILE,O_RDWR|O_CREAT|O_APPEND, 0777);
+	if(fd < 0){
+		perror("Unable to open the file");
+	}
 	while(packet_in_progress)
 	{
 		if(need_to_realloc)
@@ -142,27 +154,43 @@ void * thread_function(void* thread_param)
 			packet_in_progress = false;
 		}
 	}
+   	/*	1.	String sent to Socket AESDCHAR_IOCSEEKTO:X,Y where X and Y are unsigned decimal integer values.
+			X - Write Command to seek into, Y - Offset within write command
+		2.	These values are sent to AESDCHAR_SEEKTO ioctl
+			Then IOCTL command will perform before writes to device
+		3.	Read file and return to socket uses same file descriptor used to send to ioctl. So that file offset is honored read command.*/
+	if(strncmp(write_buffer, perform_ioctl, strlen(perform_ioctl)) == 0) {
+        	struct aesd_seekto seekto;
+        	sscanf(write_buffer, "AESDCHAR_IOCSEEKTO:%d,%d", &seekto.write_cmd, &seekto.write_cmd_offset);
+        	if(ioctl(fd, AESDCHAR_IOCSEEKTO, &seekto)) {
+            		perror("ioctl failed.");
+        	}
+    	}
+    	else{
 	// Lock the program to prevent mutual sharing of resources by multiple threads simoultaneously
 	pthread_mutex_lock(&mutex_lock);
 	int write_bytes = write(fd, write_buffer, current_bytes);
 	if(write_bytes != current_bytes){
-		printf("write failed\n");
 		perror("write failed\n");
 	}
 	printf("write success\n");
-	// Once file is written move the file to current position
-	lseek(fd, 0, SEEK_SET);
-	
+	// Once the process is complete, perform unlock for the data to be available the next time.
+	pthread_mutex_unlock(&mutex_lock);
+	}
 	while(read(fd, &read_data, 1) != 0) {
+	// Lock the program to prevent mutual sharing of resources by multiple threads simoultaneously
+	pthread_mutex_lock(&mutex_lock);
 	int sent_status = send(data->clientfd, &read_data, 1, 0);
 	if (sent_status == 0)
 	{
 		printf("send failed\n");
 	}
+	// Once the process is complete, perform unlock for the data to be available the next time.
+	pthread_mutex_unlock(&mutex_lock);
     }
 	printf("send complete\n");
 	packet_in_progress = true;
-	pthread_mutex_unlock(&mutex_lock);
+	//Once the packet is transmitter, close the socket and open the socket on the next thread execution
 	int close_fd = close(data->clientfd);
 	if(close_fd == 0){
 		syslog(LOG_DEBUG, "Closed connection from %s\n", data->client_ipaddress);
@@ -195,14 +223,13 @@ int main(int argc, char **argv) {
 	int yes = 1;
 	if(setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1){
 		perror("Unable to Setup reusing ability of the socket port and ip");
-		exit(-1);
+		exit(1);
 	}
 	
 	int sockbind = bind(sockfd, (struct sockaddr *)&server, sizeof(server));
 	if(sockbind == -1){
 		close(sockfd);
 		perror("Unable to bind Properly");
-		exit(-1);
 	}
 	syslog(LOG_USER, "Binded Connection from 9000");
 /*********************************************************************************** Perform the Daemonising Process *********************************************************************************/
@@ -242,10 +269,6 @@ int main(int argc, char **argv) {
 	}
 
 /***************************************************************************************** Listening to the Server ***********************************************************************************/
-fd = open(STORE_IN_THIS_FILE,O_RDWR|O_CREAT|O_APPEND, 0777);
-if(fd == -1){
-	perror("Unable to open the file");
-}
 syslog(LOG_USER,"File successfully opened");
 int listener = listen(sockfd, 10);
 if(listener < 0){											// Backlog value set as 10 as prescribed in the Beej's user guide on sockets.
@@ -277,13 +300,13 @@ TAILQ_INIT(&head);
 	// Source: Queue.h functions handbook line 253
 	TAILQ_INSERT_TAIL(&head, datap, entries);
 	datap = NULL;
+	free(datap);
 	// Trigger an alarm for 10 seconds to efficiently call SIGALRM to append a timestamp
 	if (!alarm_flag) {
 		alarm_flag = true;
 		printf("alarm set\n");
 		alarm(10);
 	}
-	
 	thread_data_t *entry = NULL;
 	// Source: Queue.h functions handbook line 181
 	TAILQ_FOREACH(entry, &head, entries)
